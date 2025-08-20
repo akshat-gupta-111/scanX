@@ -22,14 +22,25 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Configuration
+# Configuration - Use Streamlit secrets in cloud, fallback to environment variables
+try:
+    # Try Streamlit secrets first (for cloud deployment)
+    FRACTURE_MODEL_PATH = st.secrets.get("FRACTURE_MODEL_PATH", "best_fracture_yolov8.pt")
+    PNEUMONIA_CLASSIFIER_PATH = st.secrets.get("PNEUMONIA_CLASSIFIER_PATH", "best_classifier.pt")
+    PNEUMONIA_DET_MODEL_PATH = st.secrets.get("PNEUMONIA_DET_MODEL_PATH", "best_detection.pt")
+    GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
+    ENABLE_VISION_IN_PROMPT = st.secrets.get("ENABLE_VISION_IN_PROMPT", True)
+    LOG_LEVEL = st.secrets.get("APP_LOG_LEVEL", "INFO")
+except:
+    # Fallback to environment variables (for local development)
+    FRACTURE_MODEL_PATH = os.environ.get("FRACTURE_MODEL_PATH", "best_fracture_yolov8.pt")
+    PNEUMONIA_CLASSIFIER_PATH = os.environ.get("PNEUMONIA_CLASSIFIER_PATH", "best_classifier.pt")
+    PNEUMONIA_DET_MODEL_PATH = os.environ.get("PNEUMONIA_DET_MODEL_PATH", "best_detection.pt")
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+    ENABLE_VISION_IN_PROMPT = os.environ.get("ENABLE_VISION_IN_PROMPT", "true").lower() == "true"
+    LOG_LEVEL = os.environ.get("APP_LOG_LEVEL", "INFO").upper()
+
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
-FRACTURE_MODEL_PATH = os.environ.get("FRACTURE_MODEL_PATH", "best_fracture_yolov8.pt")
-PNEUMONIA_CLASSIFIER_PATH = os.environ.get("PNEUMONIA_CLASSIFIER_PATH", "best_classifier.pt")
-PNEUMONIA_DET_MODEL_PATH = os.environ.get("PNEUMONIA_DET_MODEL_PATH", "best_detection.pt")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-ENABLE_VISION_IN_PROMPT = os.environ.get("ENABLE_VISION_IN_PROMPT", "true").lower() == "true"
-LOG_LEVEL = os.environ.get("APP_LOG_LEVEL", "INFO").upper()
 
 # Configure Streamlit page
 st.set_page_config(
@@ -47,35 +58,65 @@ def log(msg: str, level: str = "INFO"):
 
 @st.cache_resource
 def load_models():
-    """Load all AI models with caching"""
+    """Load all AI models with caching and detailed error reporting"""
     models = {}
+    loading_status = {}
+    
+    # Check current working directory and file paths
+    current_dir = os.getcwd()
+    log(f"Current working directory: {current_dir}")
+    log(f"Files in current directory: {os.listdir('.')}")
     
     # Load fracture model
+    log(f"Attempting to load fracture model from: {FRACTURE_MODEL_PATH}")
     if os.path.exists(FRACTURE_MODEL_PATH):
         try:
             models['fracture'] = YOLO(FRACTURE_MODEL_PATH)
+            loading_status['fracture'] = "✅ Loaded successfully"
+            log(f"Fracture model loaded successfully")
         except Exception as e:
             models['fracture'] = None
+            loading_status['fracture'] = f"❌ Error: {str(e)}"
+            log(f"Error loading fracture model: {e}")
     else:
         models['fracture'] = None
+        loading_status['fracture'] = f"❌ File not found: {FRACTURE_MODEL_PATH}"
+        log(f"Fracture model file not found: {FRACTURE_MODEL_PATH}")
     
     # Load pneumonia classification model
+    log(f"Attempting to load pneumonia classifier from: {PNEUMONIA_CLASSIFIER_PATH}")
     if os.path.exists(PNEUMONIA_CLASSIFIER_PATH):
         try:
             models['pneumonia_cls'] = YOLO(PNEUMONIA_CLASSIFIER_PATH)
+            loading_status['pneumonia_cls'] = "✅ Loaded successfully"
+            log(f"Pneumonia classifier loaded successfully")
         except Exception as e:
             models['pneumonia_cls'] = None
+            loading_status['pneumonia_cls'] = f"❌ Error: {str(e)}"
+            log(f"Error loading pneumonia classifier: {e}")
     else:
         models['pneumonia_cls'] = None
+        loading_status['pneumonia_cls'] = f"❌ File not found: {PNEUMONIA_CLASSIFIER_PATH}"
+        log(f"Pneumonia classifier file not found: {PNEUMONIA_CLASSIFIER_PATH}")
     
     # Load pneumonia detection model
+    log(f"Attempting to load pneumonia detector from: {PNEUMONIA_DET_MODEL_PATH}")
     if os.path.exists(PNEUMONIA_DET_MODEL_PATH):
         try:
             models['pneumonia_det'] = YOLO(PNEUMONIA_DET_MODEL_PATH)
+            loading_status['pneumonia_det'] = "✅ Loaded successfully"
+            log(f"Pneumonia detector loaded successfully")
         except Exception as e:
             models['pneumonia_det'] = None
+            loading_status['pneumonia_det'] = f"❌ Error: {str(e)}"
+            log(f"Error loading pneumonia detector: {e}")
     else:
         models['pneumonia_det'] = None
+        loading_status['pneumonia_det'] = f"❌ File not found: {PNEUMONIA_DET_MODEL_PATH}"
+        log(f"Pneumonia detector file not found: {PNEUMONIA_DET_MODEL_PATH}")
+    
+    # Store loading status for display
+    models['_loading_status'] = loading_status
     
     return models
 
@@ -339,6 +380,33 @@ def main():
     # Load models and Gemini (silently)
     models = load_models()
     gemini_client = initialize_gemini()
+    
+    # Display model loading status
+    with st.expander("🔧 Model Loading Status", expanded=False):
+        loading_status = models.get('_loading_status', {})
+        for model_name, status in loading_status.items():
+            st.write(f"**{model_name.replace('_', ' ').title()}:** {status}")
+        
+        if gemini_client:
+            st.write("**Gemini AI:** ✅ Connected")
+        else:
+            st.write("**Gemini AI:** ❌ Not available (check GEMINI_API_KEY)")
+        
+        # Environment info
+        st.write(f"**Working Directory:** {os.getcwd()}")
+        st.write(f"**Available Files:** {', '.join([f for f in os.listdir('.') if f.endswith('.pt')])}")
+    
+    # Show warnings if models are not loaded
+    missing_models = []
+    if models['fracture'] is None:
+        missing_models.append("Fracture Detection")
+    if models['pneumonia_cls'] is None:
+        missing_models.append("Pneumonia Classification")
+    if models['pneumonia_det'] is None:
+        missing_models.append("Pneumonia Detection")
+    
+    if missing_models:
+        st.warning(f"⚠️ **Models not loaded:** {', '.join(missing_models)}. Check the status above for details.")
     
     # Task selection in main area
     st.subheader("Select Analysis Type")
