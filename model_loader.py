@@ -59,63 +59,80 @@ def download_lfs_file(file_path: str) -> bool:
         return False
 
 def load_model_with_retry(model_path: str, model_name: str, max_retries: int = 3) -> YOLO:
-    """Load YOLO model with retry mechanism (silent operation)"""
+    """Load YOLO model with retry mechanism"""
     
     for attempt in range(max_retries):
         try:
             # Check file integrity first
             if not check_file_integrity(model_path):
-                # Try to pull LFS file silently
-                download_lfs_file(model_path)
+                st.warning(f"⚠️ {model_name}: File integrity check failed (attempt {attempt + 1})")
+                
+                # Try to pull LFS file
+                if download_lfs_file(model_path):
+                    st.info(f"✅ {model_name}: Successfully pulled LFS file")
+                else:
+                    st.error(f"❌ {model_name}: Failed to pull LFS file")
                     
                 # Wait before retry
                 if attempt < max_retries - 1:
                     time.sleep(2)
                     continue
             
-            # Attempt to load model silently
-            model = YOLO(model_path)
-            
-            # Test model by getting basic info
-            _ = model.names
-            
-            return model
+            # Attempt to load model
+            with st.spinner(f"Loading {model_name}..."):
+                model = YOLO(model_path)
+                
+                # Test model by getting basic info
+                _ = model.names
+                
+                st.success(f"✅ {model_name} loaded successfully")
+                return model
                 
         except Exception as e:
+            st.warning(f"⚠️ {model_name} loading failed (attempt {attempt + 1}): {str(e)}")
+            
             if attempt < max_retries - 1:
                 time.sleep(2)
             else:
-                # Only show error on final failure
-                st.error(f"❌ {model_name}: Failed to load after {max_retries} attempts")
+                st.error(f"❌ {model_name}: All loading attempts failed")
     
     return None
 
 @st.cache_resource(show_spinner=False)
 def load_all_models():
-    """Load all AI models with comprehensive error handling (silent operation)"""
+    """Load all AI models with comprehensive error handling"""
     models = {}
     loading_status = {}
+    
+    st.info("🔄 Initializing AI models...")
     
     for model_key, config in MODEL_CONFIG.items():
         model_path = config["path"]
         model_desc = config["description"]
         
+        st.write(f"Loading {model_desc}...")
+        
         # Check if file exists
         if not os.path.exists(model_path):
+            st.error(f"❌ {model_desc}: File not found at {model_path}")
             models[model_key] = None
             loading_status[model_key] = "missing"
             continue
         
-        # Load model with retries (silently)
+        # Load model with retries
         model = load_model_with_retry(model_path, model_desc)
         models[model_key] = model
         loading_status[model_key] = "loaded" if model else "failed"
     
-    # Only show errors for completely failed loads
+    # Display loading summary
     loaded_count = sum(1 for status in loading_status.values() if status == "loaded")
     total_count = len(MODEL_CONFIG)
     
-    if loaded_count == 0:
+    if loaded_count == total_count:
+        st.success(f"🎉 All {total_count} models loaded successfully!")
+    elif loaded_count > 0:
+        st.warning(f"⚠️ {loaded_count}/{total_count} models loaded. Some features may be limited.")
+    else:
         st.error("❌ No models could be loaded. Please check model files.")
     
     return models, loading_status

@@ -10,6 +10,7 @@ import re
 import json
 import io
 import base64
+import cv2
 import numpy as np
 from typing import Any, Dict, List, Optional, Tuple
 import streamlit as st
@@ -19,22 +20,17 @@ from ultralytics import YOLO
 from dotenv import load_dotenv
 from model_loader import load_all_models, display_model_status
 
-# Try to import cv2 with fallback
-try:
-    import cv2
-    CV2_AVAILABLE = True
-except ImportError:
-    CV2_AVAILABLE = False
-    st.warning("⚠️ OpenCV not available. Some image processing features may be limited.")
-
 # Load environment variables
 load_dotenv()
 
-# Auto-pull LFS files on Streamlit Cloud (silently)
+# Auto-pull LFS files on Streamlit Cloud
 def ensure_lfs_files():
     """Ensure LFS files are available, particularly for Streamlit Cloud"""
     try:
         import subprocess
+        
+        # Check if this looks like Streamlit Cloud environment
+        is_cloud = os.environ.get('STREAMLIT_CLOUD', False) or 'streamlit' in os.environ.get('USER', '').lower()
         
         # Always try to pull LFS files if they seem to be pointer files
         model_files = ['best_fracture_yolov8.pt', 'best_classifier.pt', 'best_detection.pt']
@@ -51,15 +47,18 @@ def ensure_lfs_files():
                 break
         
         if needs_pull:
-            # Silent LFS pull - no UI messages
+            st.info("🔄 Downloading model files...")
             result = subprocess.run(['git', 'lfs', 'pull'], 
                                   capture_output=True, text=True, timeout=120)
+            if result.returncode == 0:
+                st.success("✅ Model files downloaded successfully")
+            else:
+                st.warning(f"⚠️ LFS pull warning: {result.stderr}")
                 
-    except Exception:
-        # Silent failure - don't show errors to users
-        pass
+    except Exception as e:
+        st.warning(f"⚠️ Could not auto-pull LFS files: {e}")
 
-# Ensure LFS files are available (silently)
+# Ensure LFS files are available
 ensure_lfs_files()
 
 # Configuration
@@ -105,16 +104,10 @@ def initialize_gemini():
 
 def pil_to_cv2(pil_image: Image.Image) -> np.ndarray:
     """Convert PIL image to OpenCV format"""
-    if not CV2_AVAILABLE:
-        # Fallback: return RGB array for processing
-        return np.array(pil_image)
     return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
 
 def cv2_to_pil(cv2_image: np.ndarray) -> Image.Image:
     """Convert OpenCV image to PIL format"""
-    if not CV2_AVAILABLE:
-        # If it's already RGB, return as is
-        return Image.fromarray(cv2_image.astype('uint8'))
     return Image.fromarray(cv2.cvtColor(cv2_image, cv2.COLOR_BGR2RGB))
 
 def detect_fractures(image_array: np.ndarray, model) -> Tuple[np.ndarray, List[Dict]]:
@@ -135,14 +128,10 @@ def detect_fractures(image_array: np.ndarray, model) -> Tuple[np.ndarray, List[D
         cls = int(box.cls[0])
         label = model.names.get(cls, f"class_{cls}")
         
-        # Draw bounding box (with OpenCV fallback)
-        if CV2_AVAILABLE:
-            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (220, 20, 60), 2)
-            cv2.putText(annotated_img, f"{label} {conf:.2f}", (x1, y1 - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220, 20, 60), 1)
-        else:
-            # Basic annotation without OpenCV
-            pass  # YOLO results will still be processed
+        # Draw bounding box
+        cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (220, 20, 60), 2)
+        cv2.putText(annotated_img, f"{label} {conf:.2f}", (x1, y1 - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220, 20, 60), 1)
         
         detections.append({
             "label": label,
@@ -197,11 +186,10 @@ def detect_pneumonia_regions(image_array: np.ndarray, classification_label: str,
         if raw_label.lower() == "normal":
             continue
         
-        # Draw bounding box (with OpenCV fallback)
-        if CV2_AVAILABLE:
-            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (255, 140, 0), 2)
-            cv2.putText(annotated_img, f"{raw_label} {conf:.2f}", (x1, y1 - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 140, 0), 1)
+        # Draw bounding box
+        cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (255, 140, 0), 2)
+        cv2.putText(annotated_img, f"{raw_label} {conf:.2f}", (x1, y1 - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 140, 0), 1)
         
         regions.append({
             "label": raw_label,
@@ -358,7 +346,7 @@ def main():
     st.title("🩻 X-ray AI Analysis")
     st.markdown("Upload an X-ray image for AI-powered fracture detection and pneumonia classification with real-time explanations.")
     
-    # Load models and Gemini (silently)
+    # Load models and Gemini (with improved error handling)
     models_result = load_models()
     if isinstance(models_result, tuple):
         models, loading_status = models_result
@@ -368,6 +356,11 @@ def main():
         loading_status = {}
     
     gemini_client = initialize_gemini()
+    
+    # Add debug panel in sidebar for development
+    with st.sidebar:
+        if st.checkbox("🔧 Show Model Debug Info"):
+            display_model_status()
     
     # Task selection in main area
     st.subheader("Select Analysis Type")
