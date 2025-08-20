@@ -53,6 +53,35 @@ The repository is already configured with Git LFS for model files:
 
 ## 🔧 Troubleshooting
 
+### OpenCV Import Errors
+
+**Symptoms:**
+- ImportError related to cv2 module
+- Bootstrap errors in OpenCV initialization
+- Missing system dependencies
+
+**Solutions:**
+
+1. **System Dependencies (Already Configured):**
+   ```
+   packages.txt includes:
+   - libgl1-mesa-glx
+   - libglib2.0-0  
+   - libsm6
+   - libxext6
+   - libxrender-dev
+   - libgomp1
+   ```
+
+2. **OpenCV Version Issues:**
+   - Current: `opencv-contrib-python-headless==4.8.0.76`
+   - Alternative: `opencv-python-headless==4.8.1.78`
+   - Fallback: App has built-in OpenCV fallbacks
+
+3. **Force Rebuild:**
+   - Delete and recreate Streamlit Cloud app
+   - Clear build cache in Streamlit Cloud settings
+
 ### Model Files Not Loading
 
 **Symptoms:**

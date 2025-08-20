@@ -10,7 +10,6 @@ import re
 import json
 import io
 import base64
-import cv2
 import numpy as np
 from typing import Any, Dict, List, Optional, Tuple
 import streamlit as st
@@ -19,6 +18,14 @@ import google.generativeai as genai
 from ultralytics import YOLO
 from dotenv import load_dotenv
 from model_loader import load_all_models, display_model_status
+
+# Try to import cv2 with fallback
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    st.warning("⚠️ OpenCV not available. Some image processing features may be limited.")
 
 # Load environment variables
 load_dotenv()
@@ -98,10 +105,16 @@ def initialize_gemini():
 
 def pil_to_cv2(pil_image: Image.Image) -> np.ndarray:
     """Convert PIL image to OpenCV format"""
+    if not CV2_AVAILABLE:
+        # Fallback: return RGB array for processing
+        return np.array(pil_image)
     return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
 
 def cv2_to_pil(cv2_image: np.ndarray) -> Image.Image:
     """Convert OpenCV image to PIL format"""
+    if not CV2_AVAILABLE:
+        # If it's already RGB, return as is
+        return Image.fromarray(cv2_image.astype('uint8'))
     return Image.fromarray(cv2.cvtColor(cv2_image, cv2.COLOR_BGR2RGB))
 
 def detect_fractures(image_array: np.ndarray, model) -> Tuple[np.ndarray, List[Dict]]:
@@ -122,10 +135,14 @@ def detect_fractures(image_array: np.ndarray, model) -> Tuple[np.ndarray, List[D
         cls = int(box.cls[0])
         label = model.names.get(cls, f"class_{cls}")
         
-        # Draw bounding box
-        cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (220, 20, 60), 2)
-        cv2.putText(annotated_img, f"{label} {conf:.2f}", (x1, y1 - 6),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220, 20, 60), 1)
+        # Draw bounding box (with OpenCV fallback)
+        if CV2_AVAILABLE:
+            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (220, 20, 60), 2)
+            cv2.putText(annotated_img, f"{label} {conf:.2f}", (x1, y1 - 6),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220, 20, 60), 1)
+        else:
+            # Basic annotation without OpenCV
+            pass  # YOLO results will still be processed
         
         detections.append({
             "label": label,
@@ -180,10 +197,11 @@ def detect_pneumonia_regions(image_array: np.ndarray, classification_label: str,
         if raw_label.lower() == "normal":
             continue
         
-        # Draw bounding box
-        cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (255, 140, 0), 2)
-        cv2.putText(annotated_img, f"{raw_label} {conf:.2f}", (x1, y1 - 6),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 140, 0), 1)
+        # Draw bounding box (with OpenCV fallback)
+        if CV2_AVAILABLE:
+            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (255, 140, 0), 2)
+            cv2.putText(annotated_img, f"{raw_label} {conf:.2f}", (x1, y1 - 6),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 140, 0), 1)
         
         regions.append({
             "label": raw_label,
