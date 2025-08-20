@@ -50,48 +50,31 @@ def load_models():
     """Load all AI models with caching"""
     models = {}
     
-    # Debug information
-    st.info(f"🔍 Current directory: {os.getcwd()}")
-    st.info(f"📂 Directory contents: {os.listdir('.')}")
-    st.info(f"🎯 Looking for models at:")
-    st.info(f"   - Fracture: {FRACTURE_MODEL_PATH}")
-    st.info(f"   - Pneumonia Classifier: {PNEUMONIA_CLASSIFIER_PATH}")
-    st.info(f"   - Pneumonia Detection: {PNEUMONIA_DET_MODEL_PATH}")
-    
     # Load fracture model
     if os.path.exists(FRACTURE_MODEL_PATH):
         try:
             models['fracture'] = YOLO(FRACTURE_MODEL_PATH)
-            st.success(f"✅ Fracture model loaded successfully")
         except Exception as e:
-            st.error(f"❌ Error loading fracture model: {str(e)}")
             models['fracture'] = None
     else:
-        st.error(f"❌ Fracture model not found at: {FRACTURE_MODEL_PATH}")
         models['fracture'] = None
     
     # Load pneumonia classification model
     if os.path.exists(PNEUMONIA_CLASSIFIER_PATH):
         try:
             models['pneumonia_cls'] = YOLO(PNEUMONIA_CLASSIFIER_PATH)
-            st.success(f"✅ Pneumonia classification model loaded successfully")
         except Exception as e:
-            st.error(f"❌ Error loading pneumonia classification model: {str(e)}")
             models['pneumonia_cls'] = None
     else:
-        st.error(f"❌ Pneumonia classification model not found at: {PNEUMONIA_CLASSIFIER_PATH}")
         models['pneumonia_cls'] = None
     
     # Load pneumonia detection model
     if os.path.exists(PNEUMONIA_DET_MODEL_PATH):
         try:
             models['pneumonia_det'] = YOLO(PNEUMONIA_DET_MODEL_PATH)
-            st.success(f"✅ Pneumonia detection model loaded successfully")
         except Exception as e:
-            st.error(f"❌ Error loading pneumonia detection model: {str(e)}")
             models['pneumonia_det'] = None
     else:
-        st.error(f"❌ Pneumonia detection model not found at: {PNEUMONIA_DET_MODEL_PATH}")
         models['pneumonia_det'] = None
     
     return models
