@@ -2,9 +2,10 @@ streamlit>=1.28.0
 torch>=1.7
 torchvision
 opencv-python-headless
-ultralytics
+ultralytics>=8.0.0
 google-generativeai
 requests
 Pillow
 numpy
 python-dotenv
+pathlib

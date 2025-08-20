@@ -23,6 +23,38 @@ from model_loader import load_all_models, display_model_status
 # Load environment variables
 load_dotenv()
 
+# Auto-pull LFS files on Streamlit Cloud (silently)
+def ensure_lfs_files():
+    """Ensure LFS files are available, particularly for Streamlit Cloud"""
+    try:
+        import subprocess
+        
+        # Always try to pull LFS files if they seem to be pointer files
+        model_files = ['best_fracture_yolov8.pt', 'best_classifier.pt', 'best_detection.pt']
+        needs_pull = False
+        
+        for file_path in model_files:
+            if os.path.exists(file_path):
+                size = os.path.getsize(file_path)
+                if size < 1000:  # Likely an LFS pointer file
+                    needs_pull = True
+                    break
+            else:
+                needs_pull = True
+                break
+        
+        if needs_pull:
+            # Silent LFS pull - no UI messages
+            result = subprocess.run(['git', 'lfs', 'pull'], 
+                                  capture_output=True, text=True, timeout=120)
+                
+    except Exception:
+        # Silent failure - don't show errors to users
+        pass
+
+# Ensure LFS files are available (silently)
+ensure_lfs_files()
+
 # Configuration
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 FRACTURE_MODEL_PATH = os.environ.get("FRACTURE_MODEL_PATH", "best_fracture_yolov8.pt")
@@ -308,7 +340,7 @@ def main():
     st.title("🩻 X-ray AI Analysis")
     st.markdown("Upload an X-ray image for AI-powered fracture detection and pneumonia classification with real-time explanations.")
     
-    # Load models and Gemini (with improved error handling)
+    # Load models and Gemini (silently)
     models_result = load_models()
     if isinstance(models_result, tuple):
         models, loading_status = models_result
@@ -318,11 +350,6 @@ def main():
         loading_status = {}
     
     gemini_client = initialize_gemini()
-    
-    # Add debug panel in sidebar for development
-    with st.sidebar:
-        if st.checkbox("🔧 Show Model Debug Info"):
-            display_model_status()
     
     # Task selection in main area
     st.subheader("Select Analysis Type")
